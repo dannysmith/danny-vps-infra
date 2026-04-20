@@ -158,6 +158,25 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 7a. Kernel tuning for QUIC / HTTP/3
+# ---------------------------------------------------------------------------
+# Caddy enables HTTP/3 by default. quic-go wants ~7.5 MB UDP receive/send
+# buffers; Ubuntu's defaults are ~200 KB, which triggers a warning and
+# caps throughput. Raise the ceilings so Caddy can size its buffers properly.
+# See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
+
+echo "==> Configuring kernel UDP buffers for HTTP/3..."
+SYSCTL_CONF="/etc/sysctl.d/99-caddy-quic.conf"
+cat > "$SYSCTL_CONF" <<'SYSCTLEOF'
+# Managed by danny-vps-infra/setup.sh — re-run the script to update.
+# Larger UDP buffers for Caddy's HTTP/3 (QUIC) listener.
+net.core.rmem_max=7500000
+net.core.wmem_max=7500000
+SYSCTLEOF
+sysctl --system >/dev/null
+echo "    UDP buffer ceilings raised to 7.5 MB"
+
+# ---------------------------------------------------------------------------
 # 8. Configure UFW
 # ---------------------------------------------------------------------------
 
