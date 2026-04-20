@@ -1,10 +1,6 @@
 # danny-vps-infra
 
-## Overview
-
-## Development
-
-<!-- Key development commands, setup instructions, common workflows -->
+@README.md
 
 ## Task Management
 
