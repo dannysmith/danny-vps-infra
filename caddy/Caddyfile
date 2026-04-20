@@ -1,0 +1,7 @@
+{
+    email hi@danny.is
+}
+
+server.danny.is {
+    respond "Hello from danny-vps-infra"
+}
