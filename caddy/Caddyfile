@@ -5,3 +5,7 @@
 server.danny.is {
 	respond "Hello from danny-vps-infra"
 }
+
+v.danny.is {
+	reverse_proxy loom-clone-server:3000
+}

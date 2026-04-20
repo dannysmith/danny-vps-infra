@@ -6,6 +6,13 @@ Each service lives in its own repo with its own `docker-compose.yml`. Adding one
 
 This repo contains the one-time VPS bootstrap (`setup.sh`) and the Caddy stack (`caddy/`).
 
+## Currently Deployed Services
+
+See the Caddyfile for an authoritative list
+
+- `server.danny.is` - Simple test endpoint
+- `v.danny.is` - Reverse Proxied to `loom-clone` container
+
 ## Setting up a new box
 
 1. **Push this repo to GitHub** (public — nothing sensitive lives here).
