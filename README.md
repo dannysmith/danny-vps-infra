@@ -15,6 +15,7 @@ It also contains:
 
 - `server.danny.is` - Simple test endpoint
 - `v.danny.is` - Reverse Proxied to `loom-clone` container
+- `origin.v.danny.is` - Reverse Proxied to `loom-clone` container
 
 
 ## Adding a new service
