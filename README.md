@@ -27,6 +27,7 @@ Each service should live in its own GitHub repo and contain its own `docker-comp
    - Give the service container a stable `container_name` (e.g. `loom-clone-server`).
    - Join it to the external `caddy-net` network.
    - Do **not** expose ports to the host — Caddy reaches it over the Docker network.
+   - Set a `mem_limit` (mandatory — see [Host memory budget](#host-memory-budget-76-gib-host)). This is what stops a runaway container from taking down the whole box.
 
    Example:
    ```yaml
@@ -35,6 +36,7 @@ Each service should live in its own GitHub repo and contain its own `docker-comp
        image: …
        container_name: loom-clone-server
        restart: unless-stopped
+       mem_limit: 512m   # required — keep the sum across services under ~6 GiB
        networks:
          - caddy-net
 
@@ -100,6 +102,27 @@ Persistent data for the service should live under `/mnt/data/<service-name>/` an
 7. Verify from your local machine: `curl https://server.danny.is` → `Hello from danny-vps-infra`. Check the padlock in a browser too.
 
 
+## Host memory budget (7.6 GiB host)
+
+The host's memory budget is explicit so that adding a new service can't quietly break it. One service with no limit can starve the whole box (it has happened — see issue #1).
+
+| Tenant | Budget | Where set |
+| --- | --- | --- |
+| Kernel + page cache + buffers | ~500 MiB | — |
+| dockerd, containerd, fail2ban, journald, misc | ~300 MiB | — |
+| Caddy (incl. burst headroom) | ~200 MiB | `caddy/docker-compose.yml` (no hard limit; soft via `mem_reservation`) |
+| Safety margin | ~600 MiB | — |
+| Application containers (combined) | ~6 GiB | Per-service `mem_limit` in each service's compose file |
+
+Budget against **RAM**, not RAM+swap — the 2 GiB `/swapfile` is a relief valve for transient spikes, not capacity to allocate against.
+
+**Every new service must declare a `mem_limit` in its own `docker-compose.yml`.** The sum of application `mem_limit`s should not exceed ~6 GiB on this host. This single invariant is what actually contains a runaway: a container that hits its `mem_limit` triggers a cgroup-level OOM that kills only that container, leaving the kernel, Caddy, SSH and every other service untouched. The host-level swap, sshd and Caddy `oom_score_adj` settings are defence-in-depth around it.
+
+When the box grows (more services or a bigger Hetzner tier), revisit these numbers.
+
+**Break-glass:** if the box is ever unreachable over SSH, use the Hetzner Cloud web console (out-of-band, unaffected by memory pressure).
+
+
 ## What's on the box after running setup?
 
 |           |                                                  |
@@ -112,6 +135,7 @@ Persistent data for the service should live under `/mnt/data/<service-name>/` an
 | Docker    | Engine + Compose plugin, log rotation 10m×3      |
 | Network   | `caddy-net` (shared, external)                   |
 | Storage   | `/mnt/data` (Hetzner Volume, ext4)               |
+| Swap      | 2 GiB `/swapfile` on root, swappiness=10         |
 | Kernel    | UDP buffers raised to 7.5 MB for Caddy HTTP/3    |
 | Cron      | Weekly Docker prune (Sundays 04:00 UTC)          |
 | Tools     | `gh`, `bun`, `claude`                            |

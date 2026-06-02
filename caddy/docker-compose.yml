@@ -3,6 +3,10 @@ services:
     image: caddy:2
     container_name: caddy
     restart: unless-stopped
+    # Caddy is the gateway for every other service — keep it last on the OOM
+    # killer's list and let the kernel reclaim from over-reserved cgroups first.
+    oom_score_adj: -500
+    mem_reservation: 64m
     ports:
       - "80:80"
       - "443:443"

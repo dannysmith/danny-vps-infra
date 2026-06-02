@@ -76,10 +76,24 @@ echo "==> Hardening SSH..."
 cat > /etc/ssh/sshd_config.d/99-hardening.conf <<'SSHEOF'
 PermitRootLogin no
 PasswordAuthentication no
+# Raised so the operator can still get a session in during a memory-pressure
+# episode, when sshd would otherwise throttle new connections (default 10:30:100).
+MaxStartups 100:30:200
+# Shorter pre-auth window — small reduction in exposure (default 120).
+LoginGraceTime 30
 SSHEOF
 
+# Keep sshd off the OOM killer's target list so the operator's lifeline
+# survives a memory-pressure episode even if the global OOM killer fires.
+mkdir -p /etc/systemd/system/ssh.service.d
+cat > /etc/systemd/system/ssh.service.d/99-oom.conf <<'SSHOOM'
+[Service]
+OOMScoreAdjust=-900
+SSHOOM
+systemctl daemon-reload
+
 systemctl restart ssh
-echo "    SSH hardened (root login disabled, password auth disabled)"
+echo "    SSH hardened (root login disabled, password auth disabled, MaxStartups raised, sshd OOM-protected)"
 
 # ---------------------------------------------------------------------------
 # 4. Timezone
@@ -175,6 +189,37 @@ net.core.wmem_max=7500000
 SYSCTLEOF
 sysctl --system >/dev/null
 echo "    UDP buffer ceilings raised to 7.5 MB"
+
+# ---------------------------------------------------------------------------
+# 7b. Swap file (relief valve for the global OOM killer)
+# ---------------------------------------------------------------------------
+# A zero-swap box has no pressure-relief valve before the kernel's last-resort
+# OOM killer. A small swap file on the root disk (local NVMe — confirm with
+# `lsblk -d -o name,rota`, ROTA=0) gives the kernel somewhere to push cold
+# pages under transient pressure. Deliberately NOT on /mnt/data (the Hetzner
+# Storage Volume is too slow — swapping to it would reproduce the freeze).
+# swappiness=10 keeps the kernel off swap except under real pressure.
+
+echo "==> Configuring swap..."
+if [[ ! -f /swapfile ]]; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo "/swapfile none swap sw 0 0" >> /etc/fstab
+  echo "    Created 2 GiB /swapfile"
+else
+  echo "    /swapfile already exists"
+fi
+
+cat > /etc/sysctl.d/99-swap-tuning.conf <<'SWAPSYSCTL'
+# Managed by danny-vps-infra/setup.sh — re-run the script to update.
+# Lean on swap only under real pressure; keep inode/dentry cache around longer.
+vm.swappiness=10
+vm.vfs_cache_pressure=50
+SWAPSYSCTL
+sysctl --system >/dev/null
+echo "    Swap tuning applied (swappiness=10, vfs_cache_pressure=50)"
 
 # ---------------------------------------------------------------------------
 # 8. Configure UFW
@@ -355,8 +400,11 @@ echo "User-level tools (installed for danny):"
 echo "  - Bun:             $(sudo -iu danny bash -c 'bun --version' 2>/dev/null || echo 'check manually')"
 echo "  - Claude Code:     $(sudo -iu danny bash -c 'claude --version' 2>/dev/null || echo 'check manually')"
 echo ""
+echo "Memory:"
+echo "  - Swap:            $(free -h | awk '/^Swap:/{print $2" total"}') (swappiness=$(cat /proc/sys/vm/swappiness))"
+echo ""
 echo "Security:"
-echo "  - SSH:             root login disabled, password auth disabled"
+echo "  - SSH:             root login disabled, password auth disabled, sshd OOM-protected"
 echo "  - UFW:             $(ufw status | head -1)"
 echo "  - fail2ban:        $(systemctl is-active fail2ban 2>/dev/null)"
 echo "  - Unattended upgrades: $(systemctl is-active unattended-upgrades 2>/dev/null)"
