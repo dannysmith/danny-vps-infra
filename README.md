@@ -28,6 +28,8 @@ Each service should live in its own GitHub repo and contain its own `docker-comp
    - Join it to the external `caddy-net` network.
    - Do **not** expose ports to the host — Caddy reaches it over the Docker network.
    - Set a `mem_limit` (mandatory — see [Host memory budget](#host-memory-budget-76-gib-host)). This is what stops a runaway container from taking down the whole box.
+   - Run as a **non-root user with uid 1000** (matches `danny` on the host) via a `USER` directive in the service's Dockerfile — most official images ship one (`bun`, `node`, …). Files the container writes to its `/mnt/data/<service-name>` bind mount then come out danny-owned on the host, so backups and manual admin work without sudo. (loom-clone is the reference example.)
+   - Do **not** add a `logging:` block — `setup.sh` configures daemon-level json-file rotation (10 MB × 3 files) for every container in `/etc/docker/daemon.json`.
 
    Example:
    ```yaml
@@ -59,7 +61,7 @@ Each service should live in its own GitHub repo and contain its own `docker-comp
    ```
    (Or `docker compose restart caddy` if you prefer.)
 
-Persistent data for the service should live under `/mnt/data/<service-name>/` and be bind-mounted into the container.
+Persistent data for the service should live under `/mnt/data/<service-name>/`, be owned by `danny:danny` (`sudo chown -R danny:danny /mnt/data/<service-name>` — required for the non-root uid 1000 container user to write), and be bind-mounted into the container.
 
 ## Setting up a new box
 
